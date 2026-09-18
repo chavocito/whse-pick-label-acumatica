@@ -4,6 +4,7 @@ using PX.Data;
 using PX.Data.BQL;
 using PX.Objects.IN;
 using PX.Objects.IN.WMS;
+using PX.Objects.SO;
 using PX.SM;
 
 namespace Serva.Acumatica.SoScannerLabels
@@ -105,6 +106,11 @@ namespace Serva.Acumatica.SoScannerLabels
         public virtual decimal? PickedQty { get; set; }
         public abstract class pickedQty : BqlDecimal.Field<pickedQty> { }
 
+        [PXDBDecimal]
+        [PXUIField(DisplayName = "Label Qty.")]
+        public virtual decimal? QuantityPerLabel { get; set; }
+        public abstract class quantityPerLabel : BqlDecimal.Field<quantityPerLabel> { }
+
         [PXDBInt]
         [PXUIField(DisplayName = "Label Count")]
         public virtual int? LabelCount { get; set; }
@@ -171,6 +177,10 @@ namespace Serva.Acumatica.SoScannerLabels
         [PXInt]
         public virtual int? UsrServaLabelCount { get; set; }
         public abstract class usrServaLabelCount : BqlInt.Field<usrServaLabelCount> { }
+
+        [PXDecimal]
+        public virtual decimal? UsrServaLabelQuantity { get; set; }
+        public abstract class usrServaLabelQuantity : BqlDecimal.Field<usrServaLabelQuantity> { }
     }
 
     [Serializable]
@@ -179,11 +189,23 @@ namespace Serva.Acumatica.SoScannerLabels
     {
         [PXString(15, IsUnicode = false)]
         [PXUIField(DisplayName = "Shipment Nbr.")]
+        [PXSelector(
+            typeof(Search<SOShipment.shipmentNbr>),
+            DescriptionField = typeof(SOShipment.shipmentNbr))]
         public virtual string ShipmentNbr { get; set; }
         public abstract class shipmentNbr : BqlString.Field<shipmentNbr> { }
 
         [PXString(12, IsUnicode = false)]
         [PXUIField(DisplayName = "Status")]
+        [PXStringList(
+            new[]
+            {
+                ServaSOPickConstants.PendingStatus,
+                ServaSOPickConstants.SubmittedStatus,
+                ServaSOPickConstants.FailedStatus,
+                ServaSOPickConstants.SkippedStatus
+            },
+            new[] { "PENDING", "SUBMITTED", "FAILED", "SKIPPED" })]
         public virtual string Status { get; set; }
         public abstract class status : BqlString.Field<status> { }
 

@@ -12,7 +12,8 @@ Scan Shipment number
   -> Native pick commits
   -> Enter label count 0-99
      -> 0: record Skipped and continue picking
-     -> 1-99: select a configured printer, or scan its printer GUID
+     -> 1-99: enter the quantity to print on each label
+  -> Use the default/session printer, or scan another configured printer
   -> Queue the label job(s) through DeviceHub
   -> Continue with the next item in the Shipment
 ```
@@ -24,7 +25,7 @@ The customization does not accept or resolve Sales Order numbers. Shipment loadi
 | Artifact | Purpose |
 | --- | --- |
 | `src/ServaData.cs` | Label audit DAC, scanner context, and printer/history filters. |
-| `src/ServaSOPickScanExtension.cs` | Native post-pick label count, printer selection, and queue trigger. |
+| `src/ServaSOPickScanExtension.cs` | Native post-pick label count, per-label quantity, printer selection, and queue trigger. |
 | `src/ServaLabelPrinting.cs` | DeviceHub submission and history/retry/reprint graph. |
 | `database/SERVA_SO_PICK_FACADE_DB_20260911_01.sql` | Existing additive audit-table migration artifact. |
 | `reports/SV619211.rpx` | Four-by-three-inch item pick label. |
@@ -81,7 +82,7 @@ Expected: `Acumatica 2026 R1 compile passed against build 26.101.0225`.
 2. Open `reports/SV619211.rpx` in the Acumatica 2026 R1 Report Designer.
 3. Connect to the tenant and verify the `ServaLabelPrintRequest` schema.
 4. Confirm parameter `RequestID` is an integer and the report filter is `ServaLabelPrintRequest.RequestID = @RequestID`.
-5. Confirm the custom page size is 4 by 3 inches and displayed quantity is `PickedQty`.
+5. Confirm the custom page size is 4 by 3 inches and displayed quantity is `QuantityPerLabel`.
 6. Save to the server with report ID `SV619211` and title `Serva Item Pick Tag`.
 7. Add the report to the customization project.
 8. Preview it using a real Request ID before testing DeviceHub.
@@ -156,7 +157,8 @@ PrimaryView="Filter"
    - `LabelCount`
    - `Reason`
    - `PrinterID`
-4. `PrinterID` should render as a selector because the field uses `PXPrinterSelector`.
+4. `ShipmentNbr` should render as a selector backed by Shipment headers, so each Shipment number appears once. `Status` should render as a drop-down containing `PENDING`, `SUBMITTED`, `FAILED`, and `SKIPPED`.
+5. `PrinterID` should render as a selector because the field uses `PXPrinterSelector`.
 
 ### 5.5 Configure The History Grid
 
@@ -166,7 +168,7 @@ PrimaryView="Filter"
 4. Add these columns:
    - `RequestID`, `Source`, `ShipmentNbr`
    - `InventoryID`, `LocationID`
-   - `PickedQty`, `UOM`, `LabelCount`
+   - `PickedQty`, `QuantityPerLabel`, `UOM`, `LabelCount`
    - `PrinterName`, `Status`, `CreatedDateTime`
    - `ErrorMessage`
 5. Use grid skin `PrimaryInquire` when available.
@@ -221,7 +223,7 @@ Configure a unique barcode and the required path/pick priority for each pickable
 6. In **User Profile** (`SM203010`), set each picker's default printer. The **Print Label** action uses this printer unless the picker has scanned another printer for the current scanner session.
 7. Grant pickers access to the configured printers and report `SV619211`.
 
-For a positive label count, the scanner waits at **Print Label**. Tap the action to queue with the session override or the user's default printer. To override it, scan the exact active Printer Name, DeviceHub ID, or printer GUID shown in `SM206510`; the override lasts for the scanner session. A queue/report failure records `Failed` but does not reverse the completed pick, and the scanner returns to location entry.
+For a positive label count, the scanner asks for the positive decimal quantity to print on each label and then waits at **Print Label**. Tap the action to queue with the session override or the user's default printer. To override it, scan the exact active Printer Name, DeviceHub ID, or printer GUID shown in `SM206510`; the override lasts for the scanner session. A queue/report failure records `Failed` but does not reverse the completed pick, and the scanner returns to location entry.
 
 ## 9. End-To-End Test
 
@@ -231,13 +233,13 @@ For a positive label count, the scanner waits at **Print Label**. Tap the action
 4. Scan the first line's location, item, and lot/serial when applicable.
 5. Enter the pick quantity and confirm it commits before the label prompt.
 6. Enter label count `0`; confirm a Skipped row is recorded and the scanner asks for the next location without printer selection.
-7. Pick the second line and enter label count `1`.
-8. Confirm the scanner waits at the printer stage.
-9. Tap **Print Label** and confirm it uses the picker's default printer. Repeat by scanning a different active Printer Name from `SM206510` to test the session override.
+7. Pick the second line, enter label count `2`, and enter label quantity `5`.
+8. Confirm the scanner waits at the printer stage and history shows Label Count `2` and Label Qty. `5`.
+9. Tap **Print Label** and confirm it uses the picker's default printer. Confirm both labels show quantity `5`. Repeat by scanning a different active Printer Name from `SM206510` to test the session override.
 10. Confirm a print-history row becomes Submitted and a row appears in **Print Jobs** (`SM206500`).
 11. Confirm the scanner clears the prior location and asks for the next location.
-12. Repeat with label count `3`; confirm three one-copy jobs are queued and every label shows the immediately preceding picked quantity.
-13. Verify blank, decimal, negative, and values above `99` are rejected.
+12. Repeat with label count `3`; confirm three one-copy jobs are queued and every label shows the entered label quantity.
+13. Verify blank, decimal, negative, and values above `99` are rejected for label count. Verify zero, negative, and nonnumeric label quantities are rejected.
 14. Remove picked quantity and confirm no label workflow starts.
 15. Disable DeviceHub and repeat; confirm the pick remains committed, the request is Failed, and the scanner continues.
 16. Correct DeviceHub, then use Retry in `SV619210` instead of repeating the pick.
@@ -247,11 +249,11 @@ For a positive label count, the scanner waits at **Print Label**. Tap the action
 
 ### Shipment-Line Capture
 
-The earlier context-capture errors came from waiting until the label-count callback to create the request and from relying on a current-row BQL binding. The revised scanner resolves `SOShipLine` by explicit Shipment and line keys and saves the Pending or Failed audit row immediately after native confirmation succeeds. Label count and printer selection update that persisted row, so a failed context capture is visible in `SV619210` and can be diagnosed without repeating the pick.
+The earlier context-capture errors came from waiting until the label-count callback to create the request and from relying on a current-row BQL binding. The revised scanner resolves `SOShipLine` by explicit Shipment and line keys and saves the Pending or Failed audit row immediately after native confirmation succeeds. Label count, label quantity, and printer selection update that persisted row, so a failed context capture is visible in `SV619210` and can be diagnosed without repeating the pick.
 
 `SV619210` is only the web user interface for viewing requests and running Retry/Reprint; it does not participate in immediate label creation.
 
-After publishing the latest scanner code, a positive label count should place the scanner at **Print Label**. The action submits with the effective default printer and does not open a smart panel. An `Incorrect mapping` exception means the old MSDL dialog or old C# `AskExt()` implementation is still published; remove the old mobile update, merge the packaged MSDL, republish, and refresh mobile metadata.
+After publishing the latest scanner code, a positive label count should place the scanner at **Enter the quantity to print on each label**, followed by **Print Label**. The action submits with the effective default printer and does not open a smart panel. An `Incorrect mapping` exception means the old MSDL dialog or old C# `AskExt()` implementation is still published; remove the old mobile update, merge the packaged MSDL, republish, and refresh mobile metadata.
 
 For the next reproduction, record the complete text after **label printing failed:** and check the following:
 

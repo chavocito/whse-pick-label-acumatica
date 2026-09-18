@@ -39,6 +39,7 @@ namespace Serva.Acumatica.SoScannerLabels
                     .Intercept.CreateStates.ByAppend(basis => new ScanState<PickPackShip>[]
                     {
                         new LabelCountState(),
+                        new LabelQuantityState(),
                         new PrinterSelectionState()
                     })
                     .Intercept.CreateCommands.ByAppend(() => new[] { new SelectPrinterCommand() })
@@ -125,6 +126,7 @@ namespace Serva.Acumatica.SoScannerLabels
         {
             ServaWMSScanHeaderExt context = ContextFor(basis);
             context.UsrServaLabelCount = null;
+            context.UsrServaLabelQuantity = null;
         }
 
         private void ResumePicking()
@@ -227,11 +229,53 @@ namespace Serva.Acumatica.SoScannerLabels
                             return;
                         }
 
-                        Basis.SetScanState<PrinterSelectionState>();
+                        Basis.SetScanState<LabelQuantityState>();
                     }
                     catch (Exception ex)
                     {
                         Basis.ReportError("The pick succeeded, but the label request failed: {0}", ex.Message);
+                        Basis.Get<ServaSOPickScanExtension>().ResumePicking();
+                    }
+                }
+            }
+        }
+
+        public sealed class LabelQuantityState : WMSBase.EntityState<decimal?>
+        {
+            public const string Value = "SVLQTY";
+            public override string Code => Value;
+            protected override string StatePrompt => "Enter the quantity to print on each label.";
+
+            protected override decimal? GetByBarcode(string barcode) =>
+                decimal.TryParse(barcode, NumberStyles.Number, CultureInfo.InvariantCulture, out decimal value)
+                    ? value
+                    : (decimal?)null;
+
+            protected override Validation Validate(decimal? value) =>
+                value > 0m
+                    ? Validation.Ok
+                    : Validation.Fail("Label quantity must be greater than zero.");
+
+            protected override void Apply(decimal? value) => ContextFor(Basis).UsrServaLabelQuantity = value;
+            protected override void ClearState() { }
+            protected override void ReportMissing(string barcode) =>
+                Basis.ReportError("Label quantity must be a positive number.");
+            protected override void ReportSuccess(decimal? value) { }
+            protected override void SetNextState() => Get<Logic>().SaveQuantity(ContextFor(Basis).UsrServaLabelQuantity);
+
+            public class Logic : PickPackShip.ScanExtension
+            {
+                public virtual void SaveQuantity(decimal? labelQuantity)
+                {
+                    try
+                    {
+                        PXGraph.CreateInstance<ServaLabelPrintService>()
+                            .SetLabelQuantity(Basis.RefNbr, labelQuantity.GetValueOrDefault());
+                        Basis.SetScanState<PrinterSelectionState>();
+                    }
+                    catch (Exception ex)
+                    {
+                        Basis.ReportError("The pick succeeded, but the label quantity could not be saved: {0}", ex.Message);
                         Basis.Get<ServaSOPickScanExtension>().ResumePicking();
                     }
                 }

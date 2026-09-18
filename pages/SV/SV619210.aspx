@@ -18,8 +18,8 @@
         Width="100%" Caption="Label Reprint / Retry">
         <Template>
             <px:PXLayoutRule ID="rule1" runat="server" StartColumn="True" LabelsWidth="SM" ControlSize="M" />
-            <px:PXTextEdit ID="edShipmentNbr" runat="server" DataField="ShipmentNbr" CommitChanges="True" />
-            <px:PXTextEdit ID="edStatus" runat="server" DataField="Status" CommitChanges="True" />
+            <px:PXSelector ID="edShipmentNbr" runat="server" DataField="ShipmentNbr" CommitChanges="True" />
+            <px:PXDropDown ID="edStatus" runat="server" DataField="Status" CommitChanges="True" AllowNull="True" />
             <px:PXDateTimeEdit ID="edFromDate" runat="server" DataField="FromDate" CommitChanges="True" />
             <px:PXDateTimeEdit ID="edToDate" runat="server" DataField="ToDate" CommitChanges="True" />
             <px:PXLayoutRule ID="rule2" runat="server" StartColumn="True" LabelsWidth="SM" ControlSize="M" />
@@ -42,6 +42,7 @@
                     <px:PXGridColumn DataField="InventoryID" Width="130px" />
                     <px:PXGridColumn DataField="LocationID" Width="110px" />
                     <px:PXGridColumn DataField="PickedQty" Width="90px" />
+                    <px:PXGridColumn DataField="QuantityPerLabel" Width="90px" />
                     <px:PXGridColumn DataField="UOM" Width="70px" />
                     <px:PXGridColumn DataField="LabelCount" Width="90px" />
                     <px:PXGridColumn DataField="PrinterName" Width="220px" />

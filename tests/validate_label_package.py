@@ -47,6 +47,7 @@ def test_shipment_first_scanner_contract():
     assert "PickPackShip.QtySupport.QtyState.Value" in source
     assert "basis.DispatchNext()" in source
     assert "class LabelCountState" in source
+    assert "class LabelQuantityState" in source
     assert "class PrinterSelectionState" in source
     assert "UsrServaPendingRequestID" not in source
     assert "UsrServaInventoryID" not in source
@@ -65,7 +66,9 @@ def test_shipment_first_scanner_contract():
     assert 'Code => "PRINTER"' in source
     assert "public PXAction<ScanHeader> ServaSelectPrinter" in source
     assert 'ButtonName => "ServaScanSelectPrinter"' in source
-    assert "QuantityPerLabel" not in source
+    assert "QuantityPerLabel" in source
+    assert "SetLabelQuantity" in source
+    assert "Label quantity must be greater than zero" in source
     assert "ContainerID" not in source
     assert "SHIP01" not in source
 
@@ -74,6 +77,7 @@ def test_print_contract():
     source = "\n".join(text(path) for path in SOURCES)
     assert 'ReportID = "SV619211"' in source
     assert "PickedQty = pickedQty" in source
+    assert "QuantityPerLabel = original.QuantityPerLabel ?? original.PickedQty" in source
     assert "OriginalRequestID = original.RequestID" in source
     assert "ReprintReason = reason.Trim()" in source
     assert "NumberOfCopies = 1" in source
@@ -91,9 +95,9 @@ def test_print_contract():
     assert report.findtext("./PageSettings/PaperKind") == "Custom"
     assert report.findtext("./PageSettings/PaperSize") == "384px, 288px"
     fields = {node.attrib["Name"] for node in report.findall("./Tables/ReportTable/Fields/ReportField")}
-    assert {"RequestID", "ItemNumber", "PickedQty", "UOM", "LocationCD", "OrderNbr", "CountryOfOrigin"} <= fields
+    assert {"RequestID", "ItemNumber", "PickedQty", "QuantityPerLabel", "UOM", "LocationCD", "OrderNbr", "CountryOfOrigin"} <= fields
     report_text = text(REPORT)
-    assert "QuantityPerLabel" not in report_text
+    assert "=[ServaLabelPrintRequest.QuantityPerLabel]" in report_text
     assert "ContainerID" not in report_text
     assert "ShipLocationCD" not in report_text
 
@@ -104,6 +108,7 @@ def test_database_migration():
     assert "ServaSOPickLease" not in sql
     for column in ("OriginalRequestID", "ReprintReason", "LastModifiedByID", "LastModifiedDateTime"):
         assert f"COL_LENGTH(N'dbo.ServaLabelPrintRequest', N'{column}')" in sql
+    assert "QuantityPerLabel decimal(25,6)" in sql
     assert "PRIMARY KEY CLUSTERED (CompanyID, RequestID)" in sql
     assert "DROP TABLE" not in sql.upper()
 
@@ -124,6 +129,12 @@ def test_web_and_mobile_contract():
     assert "AutoSize" not in page
     for field in ("ShipmentNbr", "Status", "FromDate", "ToDate"):
         assert f'DataField="{field}"' in page
+    assert '<px:PXSelector ID="edShipmentNbr"' in page
+    assert '<px:PXDropDown ID="edStatus"' in page
+    assert 'DataField="QuantityPerLabel"' in page
+    source = "\n".join(text(path) for path in SOURCES)
+    assert "typeof(Search<SOShipment.shipmentNbr>)" in source
+    assert "PXStringList" in source
     for field in ("OriginalRequestID", "OrderNbr", "LineNbr", "SiteID", "ReprintReason"):
         assert f'DataField="{field}"' not in page
     assert "Graph Name: `ServaLabelHistoryScreen`" in readme

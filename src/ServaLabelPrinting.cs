@@ -88,6 +88,7 @@ namespace Serva.Acumatica.SoScannerLabels
                 LocationCD = location?.LocationCD,
                 UOM = uom,
                 PickedQty = pickedQty,
+                QuantityPerLabel = null,
                 LabelCount = labelCount,
                 CountryOfOrigin = item?.CountryOfOrigin,
                 PrinterID = printerID,
@@ -116,7 +117,9 @@ namespace Serva.Acumatica.SoScannerLabels
             foreach (ServaLabelPrintRequest request in rows)
             {
                 if (request.Status == ServaSOPickConstants.PendingStatus
-                    && (awaitingLabelCount ? request.LabelCount == null : request.LabelCount > 0))
+                    && (awaitingLabelCount
+                        ? request.LabelCount == null
+                        : request.LabelCount > 0 && request.QuantityPerLabel > 0m))
                     return request;
             }
 
@@ -138,6 +141,37 @@ namespace Serva.Acumatica.SoScannerLabels
             request.Status = labelCount == 0
                 ? ServaSOPickConstants.SkippedStatus
                 : ServaSOPickConstants.PendingStatus;
+            Requests.Update(request);
+            Persist();
+            return request;
+        }
+
+        public virtual ServaLabelPrintRequest SetLabelQuantity(string shipmentNbr, decimal labelQuantity)
+        {
+            ValidateLabelQuantity(labelQuantity);
+            var rows = SelectFrom<ServaLabelPrintRequest>
+                .Where<ServaLabelPrintRequest.shipmentNbr.IsEqual<@P.AsString>
+                    .And<ServaLabelPrintRequest.source.IsEqual<@P.AsString>>
+                    .And<ServaLabelPrintRequest.createdByID.IsEqual<@P.AsGuid>>>
+                .OrderBy<ServaLabelPrintRequest.requestID.Desc>
+                .View.ReadOnly.Select(this, shipmentNbr, ServaSOPickConstants.PickSource, Accessinfo.UserID);
+
+            ServaLabelPrintRequest request = null;
+            foreach (ServaLabelPrintRequest row in rows)
+            {
+                if (row.Status == ServaSOPickConstants.PendingStatus
+                    && row.LabelCount > 0
+                    && row.QuantityPerLabel == null)
+                {
+                    request = row;
+                    break;
+                }
+            }
+
+            if (request == null)
+                throw new PXException("No pending label request was found for label quantity entry.");
+
+            request.QuantityPerLabel = labelQuantity;
             Requests.Update(request);
             Persist();
             return request;
@@ -175,6 +209,7 @@ namespace Serva.Acumatica.SoScannerLabels
                 LocationCD = original.LocationCD,
                 UOM = original.UOM,
                 PickedQty = original.PickedQty,
+                QuantityPerLabel = original.QuantityPerLabel ?? original.PickedQty,
                 LabelCount = labelCount,
                 CountryOfOrigin = original.CountryOfOrigin,
                 PrinterID = printerID ?? original.PrinterID,
@@ -194,6 +229,7 @@ namespace Serva.Acumatica.SoScannerLabels
 
             try
             {
+                ValidateLabelQuantity(request.QuantityPerLabel.GetValueOrDefault());
                 SMPrinter printer = ResolvePrinter(request.PrinterID);
                 request.PrinterID = printer.PrinterID;
                 request.PrinterName = printer.PrinterName;
@@ -282,6 +318,12 @@ namespace Serva.Acumatica.SoScannerLabels
         {
             if (labelCount < 0 || labelCount > ServaSOPickConstants.MaximumLabelCount)
                 throw new PXException("Label count must be a whole number from 0 to 99.");
+        }
+
+        public static void ValidateLabelQuantity(decimal labelQuantity)
+        {
+            if (labelQuantity <= 0m)
+                throw new PXException("Label quantity must be greater than zero.");
         }
     }
 

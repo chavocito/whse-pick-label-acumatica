@@ -38,6 +38,7 @@
         <ReportField Name="LocationCD"></ReportField>
         <ReportField Name="UOM"></ReportField>
         <ReportField Name="PickedQty"><DataType>Decimal</DataType></ReportField>
+        <ReportField Name="QuantityPerLabel"><DataType>Decimal</DataType></ReportField>
         <ReportField Name="CountryOfOrigin"></ReportField>
         <ReportField Name="CreatedDateTime"><DataType>DateTime</DataType></ReportField>
       </Fields>
@@ -66,7 +67,7 @@
         <TextBox Name="quantity">
           <Location>332px, 5px</Location><Size>46px, 30px</Size>
           <Style><Font><Size>18px</Size><Style>Bold</Style></Font><TextAlign>Right</TextAlign></Style>
-          <Value>=[ServaLabelPrintRequest.PickedQty]</Value>
+          <Value>=[ServaLabelPrintRequest.QuantityPerLabel]</Value>
         </TextBox>
         <PictureBox Name="itemQr">
           <BarcodeType>QRCode</BarcodeType><Location>12px, 49px</Location><MimeType>image/bmp</MimeType>
