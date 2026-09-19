@@ -1,11 +1,10 @@
 import re
-import xml.etree.ElementTree as ET
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCES = sorted((ROOT / "src").glob("*.cs"))
 DATABASE = ROOT / "database" / "SERVA_SO_PICK_FACADE_DB_20260911_01.sql"
-REPORT = ROOT / "reports" / "SV619211.rpx"
+ZPL_TEMPLATE = ROOT / "sv619210.zpl"
 PAGE = ROOT / "pages" / "SV" / "SV619210.aspx"
 PAGE_CODEBEHIND = ROOT / "pages" / "SV" / "SV619210.aspx.cs"
 MOBILE = ROOT / "mobile" / "serva-so-pick-facade.msd"
@@ -17,7 +16,7 @@ def text(path):
 
 
 def test_package_shape():
-    required = [DATABASE, REPORT, PAGE, PAGE_CODEBEHIND, MOBILE, COMPILE_CHECK]
+    required = [DATABASE, ZPL_TEMPLATE, PAGE, PAGE_CODEBEHIND, MOBILE, COMPILE_CHECK]
     assert all(path.exists() for path in required), "a required package artifact is missing"
     assert len(SOURCES) == 3, f"expected three focused C# files, found {len(SOURCES)}"
     removed = [
@@ -75,38 +74,44 @@ def test_shipment_first_scanner_contract():
 
 def test_print_contract():
     source = "\n".join(text(path) for path in SOURCES)
-    assert 'ReportID = "SV619211"' in source
     assert "PickedQty = pickedQty" in source
     assert "QuantityPerLabel = original.QuantityPerLabel ?? original.PickedQty" in source
     assert "OriginalRequestID = original.RequestID" in source
     assert "ReprintReason = reason.Trim()" in source
     assert "NumberOfCopies = 1" in source
     assert "for (int copy = 1; copy <= request.LabelCount" in source
+    assert "BuildSalesOrderLabelZpl" in source
+    assert "UploadZplFile" in source
+    assert "Encoding.UTF8.GetBytes" in source
+    assert '"FILEID", zplFile.UID.ToString()' in source
+    assert "UploadFileMaintenance" in source
+    assert "FileExistsAction.CreateVersion" in source
+    assert "ZplFileID = zplFile.UID" in source
+    assert "ZplFileName = zplFile.Name" in source
+    assert "CreatePrintJob(\n                        printSettings,\n                        (string)null" in source
+    assert "Serva SO Label ZPL" in source
+    assert "raw ZPL sales-order label" in source
+    assert "SODate = order?.OrderDate" in source
+    assert "CompanyName = organization?.OrganizationName" in source
+    assert "CompanyCountry = branchAddress?.CountryID" in source
+    assert "FormatQuantity(request.QuantityPerLabel)" in source
+    assert "public PXAction<ServaLabelHistoryFilter> DownloadZpl" in source
+    assert "PXRedirectToFileException(file, true)" in source
     assert ".GetAwaiter().GetResult()" in source
     assert "if (!accepted)" in source
     assert "SubmittedStatus" in source and "FailedStatus" in source and "SkippedStatus" in source
     assert "The pick succeeded, but label printing failed" in source
     assert "No pending label request was found for printer selection" in source
 
-    report = ET.parse(REPORT).getroot()
-    assert report.findtext("./Parameters/ReportParameter/Name") == "RequestID"
-    assert report.findtext("./Filters/FilterExp/DataField") == "ServaLabelPrintRequest.RequestID"
-    assert report.findtext("./Filters/FilterExp/Value") == "@RequestID"
-    assert report.findtext("./PageSettings/PaperKind") == "Custom"
-    assert report.findtext("./PageSettings/PaperSize") == "384px, 288px"
-    fields = {node.attrib["Name"] for node in report.findall("./Tables/ReportTable/Fields/ReportField")}
-    assert {"RequestID", "ItemNumber", "PickedQty", "QuantityPerLabel", "UOM", "LocationCD", "OrderNbr", "CountryOfOrigin"} <= fields
-    report_text = text(REPORT)
-    assert "=[ServaLabelPrintRequest.QuantityPerLabel]" in report_text
-    assert "ContainerID" not in report_text
-    assert "ShipLocationCD" not in report_text
+    for command in ("^PW812", "^LL609", "^FO60,130^BQ,2,7", "^FO740,45^A0N,32,32", "^FO650,450^A0N,28,28"):
+        assert command in source and command in text(ZPL_TEMPLATE)
 
 
 def test_database_migration():
     sql = text(DATABASE)
     assert "OBJECT_ID(N'dbo.ServaLabelPrintRequest'" in sql
     assert "ServaSOPickLease" not in sql
-    for column in ("OriginalRequestID", "ReprintReason", "LastModifiedByID", "LastModifiedDateTime"):
+    for column in ("OriginalRequestID", "ReprintReason", "LastModifiedByID", "LastModifiedDateTime", "SODate", "CompanyName", "CompanyCountry", "ZplFileID", "ZplFileName"):
         assert f"COL_LENGTH(N'dbo.ServaLabelPrintRequest', N'{column}')" in sql
     assert "QuantityPerLabel decimal(25,6)" in sql
     assert "PRIMARY KEY CLUSTERED (CompanyID, RequestID)" in sql
@@ -125,13 +130,14 @@ def test_web_and_mobile_contract():
     assert 'DataMember="Requests"' in page
     assert not re.search(r'<px:PXGrid\b[^>]*\bDataMember=', page)
     assert re.search(r'<px:PXGridLevel\b[^>]*\bDataMember="Requests"', page)
-    assert 'Name="Reprint"' in page and 'Name="Retry"' in page
+    assert 'Name="Reprint"' in page and 'Name="Retry"' in page and 'Name="DownloadZpl"' in page
     assert "AutoSize" not in page
     for field in ("ShipmentNbr", "Status", "FromDate", "ToDate"):
         assert f'DataField="{field}"' in page
     assert '<px:PXSelector ID="edShipmentNbr"' in page
     assert '<px:PXDropDown ID="edStatus"' in page
     assert 'DataField="QuantityPerLabel"' in page
+    assert 'DataField="ZplFileName"' in page
     source = "\n".join(text(path) for path in SOURCES)
     assert "typeof(Search<SOShipment.shipmentNbr>)" in source
     assert "PXStringList" in source

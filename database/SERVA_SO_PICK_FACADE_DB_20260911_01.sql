@@ -9,6 +9,9 @@ BEGIN
         ShipmentNbr varchar(15) NULL,
         OrderType varchar(2) NULL,
         OrderNbr varchar(15) NULL,
+        SODate date NULL,
+        CompanyName nvarchar(60) NULL,
+        CompanyCountry varchar(2) NULL,
         LineNbr int NULL,
         InventoryID int NULL,
         ItemNumber nvarchar(30) NULL,
@@ -26,6 +29,8 @@ BEGIN
         CountryOfOrigin varchar(2) NULL,
         PrinterName nvarchar(255) NULL,
         PrinterID uniqueidentifier NULL,
+        ZplFileID uniqueidentifier NULL,
+        ZplFileName nvarchar(255) NULL,
         Status varchar(12) NULL,
         ReprintReason nvarchar(255) NULL,
         ErrorMessage nvarchar(2048) NULL,
@@ -50,4 +55,19 @@ IF COL_LENGTH(N'dbo.ServaLabelPrintRequest', N'LastModifiedByID') IS NULL
 GO
 IF COL_LENGTH(N'dbo.ServaLabelPrintRequest', N'LastModifiedDateTime') IS NULL
     ALTER TABLE dbo.ServaLabelPrintRequest ADD LastModifiedDateTime datetime NULL;
+GO
+IF COL_LENGTH(N'dbo.ServaLabelPrintRequest', N'SODate') IS NULL
+    ALTER TABLE dbo.ServaLabelPrintRequest ADD SODate date NULL;
+GO
+IF COL_LENGTH(N'dbo.ServaLabelPrintRequest', N'CompanyName') IS NULL
+    ALTER TABLE dbo.ServaLabelPrintRequest ADD CompanyName nvarchar(60) NULL;
+GO
+IF COL_LENGTH(N'dbo.ServaLabelPrintRequest', N'CompanyCountry') IS NULL
+    ALTER TABLE dbo.ServaLabelPrintRequest ADD CompanyCountry varchar(2) NULL;
+GO
+IF COL_LENGTH(N'dbo.ServaLabelPrintRequest', N'ZplFileID') IS NULL
+    ALTER TABLE dbo.ServaLabelPrintRequest ADD ZplFileID uniqueidentifier NULL;
+GO
+IF COL_LENGTH(N'dbo.ServaLabelPrintRequest', N'ZplFileName') IS NULL
+    ALTER TABLE dbo.ServaLabelPrintRequest ADD ZplFileName nvarchar(255) NULL;
 GO

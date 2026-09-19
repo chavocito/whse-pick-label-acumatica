@@ -26,9 +26,9 @@ The customization does not accept or resolve Sales Order numbers. Shipment loadi
 | --- | --- |
 | `src/ServaData.cs` | Label audit DAC, scanner context, and printer/history filters. |
 | `src/ServaSOPickScanExtension.cs` | Native post-pick label count, per-label quantity, printer selection, and queue trigger. |
-| `src/ServaLabelPrinting.cs` | DeviceHub submission and history/retry/reprint graph. |
+| `src/ServaLabelPrinting.cs` | Raw ZPL generation, DeviceHub submission, and history/retry/reprint graph. |
 | `database/SERVA_SO_PICK_FACADE_DB_20260911_01.sql` | Existing additive audit-table migration artifact. |
-| `reports/SV619211.rpx` | Four-by-three-inch item pick label. |
+| `sv619210.zpl` | Source layout for the generated sales-order label. |
 | `pages/SV/SV619210.aspx` and `.aspx.cs` | Label Print History page and required `PXPage` code-behind. |
 | `mobile/serva-so-pick-facade.msd` | Adds the default-printer print action to native mobile picking. |
 | `tests/compile_against_acumatica.ps1` | Compile check for Acumatica 2026 R1. |
@@ -45,7 +45,7 @@ The historical SQL and mobile artifact filenames can remain because renaming cus
 5. Confirm no published customization still contains `ServaSOPickResolver`, `DocumentTypeState`, `UsrServaDocumentType`, an SO/shipment mode prompt, or an override of `PickMode.ShipmentState`.
 6. Publish with cleanup and restart the application when prompted.
 
-Do not remove `dbo.ServaLabelPrintRequest`; it is the label audit table. No database change is required solely for this shipment-first revision because the new scanner fields are unbound session fields.
+Do not remove `dbo.ServaLabelPrintRequest`; it is the label audit table. Republish the additive database script to add the sales-order date, company, company country, and generated-ZPL audit fields.
 
 ## 2. Database Migration For A New Installation
 
@@ -55,7 +55,7 @@ Skip this section when the existing migration has already published successfully
 2. Add `database/SERVA_SO_PICK_FACADE_DB_20260911_01.sql`.
 3. Use Script Name `SERVA_SO_PICK_FACADE_DB_20260911_01`.
 4. If that metadata name was previously used, increment only the suffix, for example `SERVA_SO_PICK_FACADE_DB_20260911_02`.
-5. Publish the database script before publishing C# or the report.
+5. Publish the database script before publishing C#.
 6. Confirm `dbo.ServaLabelPrintRequest` exists with its company-aware primary key.
 
 ## 3. Add And Compile C#
@@ -76,16 +76,11 @@ Local compile command:
 
 Expected: `Acumatica 2026 R1 compile passed against build 26.101.0225`.
 
-## 4. Add Report SV619211
+## 4. Raw ZPL Printing
 
-1. Publish the database and C# files first.
-2. Open `reports/SV619211.rpx` in the Acumatica 2026 R1 Report Designer.
-3. Connect to the tenant and verify the `ServaLabelPrintRequest` schema.
-4. Confirm parameter `RequestID` is an integer and the report filter is `ServaLabelPrintRequest.RequestID = @RequestID`.
-5. Confirm the custom page size is 4 by 3 inches and displayed quantity is `QuantityPerLabel`.
-6. Save to the server with report ID `SV619211` and title `Serva Item Pick Tag`.
-7. Add the report to the customization project.
-8. Preview it using a real Request ID before testing DeviceHub.
+No RPX report is required. `ServaLabelPrinting.cs` builds the layout represented by `sv619210.zpl`, uploads one `.zpl` file per requested label, and queues each file through DeviceHub using its `FILEID`.
+
+`LabelCount` controls the number of files/jobs. `QuantityPerLabel` is the end-user-entered value printed on every label. Company name and country come from the sales order's branch; the date comes from `SOOrder.OrderDate`.
 
 ## 5. Add History Page SV619210
 
@@ -221,9 +216,9 @@ Configure a unique barcode and the required path/pick priority for each pickable
 4. In **Printers** (`SM206510`), run **Update Printer List**.
 5. Confirm each intended printer appears and can print a DeviceHub test page.
 6. In **User Profile** (`SM203010`), set each picker's default printer. The **Print Label** action uses this printer unless the picker has scanned another printer for the current scanner session.
-7. Grant pickers access to the configured printers and report `SV619211`.
+7. Grant pickers access to the configured printers and confirm each Zebra printer is configured for raw ZPL mode.
 
-For a positive label count, the scanner asks for the positive decimal quantity to print on each label and then waits at **Print Label**. Tap the action to queue with the session override or the user's default printer. To override it, scan the exact active Printer Name, DeviceHub ID, or printer GUID shown in `SM206510`; the override lasts for the scanner session. A queue/report failure records `Failed` but does not reverse the completed pick, and the scanner returns to location entry.
+For a positive label count, the scanner asks for the positive decimal quantity to print on each label and then waits at **Print Label**. Tap the action to queue with the session override or the user's default printer. To override it, scan the exact active Printer Name, DeviceHub ID, or printer GUID shown in `SM206510`; the override lasts for the scanner session. A queue failure records `Failed` but does not reverse the completed pick, and the scanner returns to location entry.
 
 ## 9. End-To-End Test
 
@@ -236,7 +231,7 @@ For a positive label count, the scanner asks for the positive decimal quantity t
 7. Pick the second line, enter label count `2`, and enter label quantity `5`.
 8. Confirm the scanner waits at the printer stage and history shows Label Count `2` and Label Qty. `5`.
 9. Tap **Print Label** and confirm it uses the picker's default printer. Confirm both labels show quantity `5`. Repeat by scanning a different active Printer Name from `SM206510` to test the session override.
-10. Confirm a print-history row becomes Submitted and a row appears in **Print Jobs** (`SM206500`).
+10. Confirm a print-history row becomes Submitted, its generated `.zpl` can be downloaded, and a row appears in **Print Jobs** (`SM206500`).
 11. Confirm the scanner clears the prior location and asks for the next location.
 12. Repeat with label count `3`; confirm three one-copy jobs are queued and every label shows the entered label quantity.
 13. Verify blank, decimal, negative, and values above `99` are rejected for label count. Verify zero, negative, and nonnumeric label quantities are rejected.
@@ -257,11 +252,11 @@ After publishing the latest scanner code, a positive label count should place th
 
 For the next reproduction, record the complete text after **label printing failed:** and check the following:
 
-- Preview `SV619211` with the failed Request ID. A preview error is a report/schema issue, not DeviceHub.
+- Download the generated ZPL from `SV619210` and inspect its populated fields.
 - Read **Error** in `SV619210` and inspect **System Management > Trace** (`SM205000`).
-- Check **Print Jobs** (`SM206500`). No row means report/job creation was rejected; an existing row moves troubleshooting to DeviceHub, the Windows queue, driver, or printer.
+- Check **Print Jobs** (`SM206500`). No row means raw-file job creation was rejected; an existing row moves troubleshooting to DeviceHub, the Windows queue, driver, or printer.
 - Re-run **Update Printer List** in `SM206510` if the printer selector is empty.
-- Confirm the signed-in user can access the printer and `SV619211`.
+- Confirm the signed-in user can access the printer and the Zebra queue accepts raw ZPL.
 
 `Submitted` means Acumatica accepted the DeviceHub print job. It does not prove that paper physically exited the printer.
 

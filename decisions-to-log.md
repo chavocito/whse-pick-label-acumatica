@@ -11,6 +11,7 @@
 | Staging/container | No SHIP01, staging confirmation, or Container ID is captured. | These values are not required for the agreed workflow. |
 | Labels | Prompt for label count `0-99` after each successful positive pick; for a positive count, require the quantity to print on each label. | Supports packaging one picked quantity across multiple boxes while preserving both picked quantity and label quantity. |
 | Printer | The Print Label action uses the scanner-session override or the user's default printer; an override can be scanned by active Printer Name, DeviceHub ID, or GUID. | Avoids an unsupported mobile smart-panel mapping while retaining a scanner-only override path. |
-| Printing | After label quantity entry, Print Label submits report `SV619211` through DeviceHub as one copy per job, then returns to native picking. | Keeps print failure separate from the committed pick and gives deterministic copy handling. |
+| Printing | After label quantity entry, Print Label generates one raw `.zpl` file per label and submits it through DeviceHub, then returns to native picking. | Removes the RPX dependency while keeping print failure separate from the committed pick and copy handling deterministic. |
+| Label country | The label prints the sales-order branch/company country, not the inventory item's country of origin. | Matches the approved `sv619210.zpl` field semantics. |
 | Reprints | Reprint/retry starts from immutable print history and retains SO/shipment/line context and quantity per label. | Preserves the original label content without changing picked quantity. |
 | Completion | Picking completion does not confirm the shipment. | Packing and shipment confirmation remain separate native processes. |

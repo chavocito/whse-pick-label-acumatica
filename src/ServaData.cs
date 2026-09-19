@@ -18,7 +18,6 @@ namespace Serva.Acumatica.SoScannerLabels
         public const string PendingStatus = "PENDING";
         public const string SubmittedStatus = "SUBMITTED";
         public const string FailedStatus = "FAILED";
-        public const string ReportID = "SV619211";
         public const int MaximumLabelCount = 99;
     }
 
@@ -55,6 +54,21 @@ namespace Serva.Acumatica.SoScannerLabels
         [PXUIField(DisplayName = "Order Nbr.")]
         public virtual string OrderNbr { get; set; }
         public abstract class orderNbr : BqlString.Field<orderNbr> { }
+
+        [PXDBDate]
+        [PXUIField(DisplayName = "SO Date")]
+        public virtual DateTime? SODate { get; set; }
+        public abstract class sODate : BqlDateTime.Field<sODate> { }
+
+        [PXDBString(60, IsUnicode = true)]
+        [PXUIField(DisplayName = "Company")]
+        public virtual string CompanyName { get; set; }
+        public abstract class companyName : BqlString.Field<companyName> { }
+
+        [PXDBString(2, IsUnicode = false)]
+        [PXUIField(DisplayName = "Company Country")]
+        public virtual string CompanyCountry { get; set; }
+        public abstract class companyCountry : BqlString.Field<companyCountry> { }
 
         [PXDBInt]
         [PXUIField(DisplayName = "Shipment Line Nbr.")]
@@ -130,6 +144,16 @@ namespace Serva.Acumatica.SoScannerLabels
         [PXUIField(DisplayName = "Printer")]
         public virtual string PrinterName { get; set; }
         public abstract class printerName : BqlString.Field<printerName> { }
+
+        [PXDBGuid]
+        [PXUIField(DisplayName = "ZPL File ID", Visible = false)]
+        public virtual Guid? ZplFileID { get; set; }
+        public abstract class zplFileID : BqlGuid.Field<zplFileID> { }
+
+        [PXDBString(255, IsUnicode = true)]
+        [PXUIField(DisplayName = "ZPL File")]
+        public virtual string ZplFileName { get; set; }
+        public abstract class zplFileName : BqlString.Field<zplFileName> { }
 
         [PXDBString(12, IsUnicode = false)]
         [PXUIField(DisplayName = "Status")]

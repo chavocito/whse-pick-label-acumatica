@@ -9,6 +9,7 @@
         <CallbackCommands>
             <px:PXDSCallbackCommand Name="Reprint" CommitChanges="True" />
             <px:PXDSCallbackCommand Name="Retry" CommitChanges="True" />
+            <px:PXDSCallbackCommand Name="DownloadZpl" />
         </CallbackCommands>
     </px:PXDataSource>
 </asp:Content>
@@ -46,6 +47,7 @@
                     <px:PXGridColumn DataField="UOM" Width="70px" />
                     <px:PXGridColumn DataField="LabelCount" Width="90px" />
                     <px:PXGridColumn DataField="PrinterName" Width="220px" />
+                    <px:PXGridColumn DataField="ZplFileName" Width="220px" />
                     <px:PXGridColumn DataField="Status" Width="100px" />
                     <px:PXGridColumn DataField="CreatedDateTime" Width="150px" />
                     <px:PXGridColumn DataField="ErrorMessage" Width="300px" />

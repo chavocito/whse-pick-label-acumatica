@@ -1,11 +1,14 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Text;
 using System.Threading;
 using PX.Data;
 using PX.Data.BQL;
 using PX.Data.BQL.Fluent;
 using PX.Objects.CS;
+using PX.Objects.CR;
 using PX.Objects.IN;
 using PX.Objects.SO;
 using PX.SM;
@@ -72,12 +75,27 @@ namespace Serva.Acumatica.SoScannerLabels
             InventoryItem item = InventoryItem.PK.Find(this, inventoryID);
             INLocation location = INLocation.PK.Find(this, locationID);
             INSite site = INSite.PK.Find(this, siteID);
+            SOOrder order = SelectFrom<SOOrder>
+                .Where<SOOrder.orderType.IsEqual<@P.AsString>
+                    .And<SOOrder.orderNbr.IsEqual<@P.AsString>>>
+                .View.ReadOnly.Select(this, orderType, orderNbr);
+            PX.Objects.GL.Branch branch = SelectFrom<PX.Objects.GL.Branch>
+                .Where<PX.Objects.GL.Branch.branchID.IsEqual<@P.AsInt>>
+                .View.ReadOnly.Select(this, order?.BranchID);
+            PX.Objects.GL.DAC.Organization organization = SelectFrom<PX.Objects.GL.DAC.Organization>
+                .Where<PX.Objects.GL.DAC.Organization.organizationID.IsEqual<@P.AsInt>>
+                .View.ReadOnly.Select(this, branch?.OrganizationID);
+            BAccount branchAccount = BAccount.PK.Find(this, branch?.BAccountID);
+            Address branchAddress = Address.PK.Find(this, branchAccount?.DefAddressID);
             var request = new ServaLabelPrintRequest
             {
                 Source = ServaSOPickConstants.PickSource,
                 ShipmentNbr = shipmentNbr,
                 OrderType = orderType,
                 OrderNbr = orderNbr,
+                SODate = order?.OrderDate,
+                CompanyName = organization?.OrganizationName,
+                CompanyCountry = branchAddress?.CountryID,
                 LineNbr = lineNbr,
                 InventoryID = inventoryID,
                 ItemNumber = item?.InventoryCD,
@@ -199,6 +217,9 @@ namespace Serva.Acumatica.SoScannerLabels
                 ShipmentNbr = original.ShipmentNbr,
                 OrderType = original.OrderType,
                 OrderNbr = original.OrderNbr,
+                SODate = original.SODate,
+                CompanyName = original.CompanyName,
+                CompanyCountry = original.CompanyCountry,
                 LineNbr = original.LineNbr,
                 InventoryID = original.InventoryID,
                 ItemNumber = original.ItemNumber,
@@ -213,6 +234,8 @@ namespace Serva.Acumatica.SoScannerLabels
                 LabelCount = labelCount,
                 CountryOfOrigin = original.CountryOfOrigin,
                 PrinterID = printerID ?? original.PrinterID,
+                ZplFileID = original.ZplFileID,
+                ZplFileName = original.ZplFileName,
                 ReprintReason = reason.Trim(),
                 Status = ServaSOPickConstants.PendingStatus
             };
@@ -234,16 +257,19 @@ namespace Serva.Acumatica.SoScannerLabels
                 request.PrinterID = printer.PrinterID;
                 request.PrinterName = printer.PrinterName;
 
-                if (string.IsNullOrWhiteSpace(request.CountryOfOrigin))
-                    PXTrace.WriteWarning("Serva label request {0} has no country of origin.", request.RequestID);
-
-                var parameters = new Dictionary<string, string>
-                {
-                    { "RequestID", request.RequestID.ToString() }
-                };
+                if (string.IsNullOrWhiteSpace(request.CompanyCountry))
+                    PXTrace.WriteWarning("Serva label request {0} has no branch/company country.", request.RequestID);
 
                 for (int copy = 1; copy <= request.LabelCount.GetValueOrDefault(); copy++)
                 {
+                    PX.SM.FileInfo zplFile = UploadZplFile(request, copy);
+                    request.ZplFileID = zplFile.UID;
+                    request.ZplFileName = zplFile.Name;
+                    var parameters = new Dictionary<string, string>
+                    {
+                        { "FILEID", zplFile.UID.ToString() }
+                    };
+
                     var printSettings = new PrintSettings
                     {
                         PrinterID = printer.PrinterID,
@@ -254,16 +280,15 @@ namespace Serva.Acumatica.SoScannerLabels
 
                     bool accepted = PXGraph.CreateInstance<SMPrintJobMaint>().CreatePrintJob(
                         printSettings,
-                        ServaSOPickConstants.ReportID,
+                        (string)null,
                         parameters,
-                        string.Format("Serva Item Pick Tag {0} ({1}/{2})", request.RequestID, copy, request.LabelCount),
+                        string.Format("Serva SO Label ZPL {0} ({1}/{2})", request.RequestID, copy, request.LabelCount),
                         CancellationToken.None).GetAwaiter().GetResult();
                     if (!accepted)
                         throw new PXException(
-                            "DeviceHub did not accept label {0} of {1}. Verify report {2}, the selected printer, and DeviceHub connectivity.",
+                            "DeviceHub did not accept raw ZPL sales-order label {0} of {1}. Verify the selected printer is configured for raw mode and DeviceHub is connected.",
                             copy,
-                            request.LabelCount,
-                            ServaSOPickConstants.ReportID);
+                            request.LabelCount);
                 }
 
                 request.Status = ServaSOPickConstants.SubmittedStatus;
@@ -300,6 +325,77 @@ namespace Serva.Acumatica.SoScannerLabels
             if (printer.IsActive != true)
                 throw new PXException("The selected DeviceHub printer is inactive. Activate it in SM206510 or select another printer.");
             return printer;
+        }
+
+        protected virtual PX.SM.FileInfo UploadZplFile(ServaLabelPrintRequest request, int copy)
+        {
+            byte[] labelBytes = Encoding.UTF8.GetBytes(BuildSalesOrderLabelZpl(request));
+            string filename = string.Format(
+                CultureInfo.InvariantCulture,
+                "serva-so-label-{0}-{1}.zpl",
+                request.RequestID,
+                copy);
+            var file = new PX.SM.FileInfo(filename, null, labelBytes);
+            UploadFileMaintenance upload = PXGraph.CreateInstance<UploadFileMaintenance>();
+            if (!upload.SaveFile(file, FileExistsAction.CreateVersion) || file.UID == null)
+                throw new PXException("The raw ZPL label file could not be saved for DeviceHub printing.");
+            return file;
+        }
+
+        protected virtual string BuildSalesOrderLabelZpl(ServaLabelPrintRequest request)
+        {
+            string item = ZplEscape(Clean(request.ItemNumber));
+            string uom = ZplEscape(Clean(request.UOM));
+            string quantity = ZplEscape(FormatQuantity(request.QuantityPerLabel));
+            string company = ZplEscape(Clean(request.CompanyName));
+            string description = ZplEscape(Clean(request.ItemDescription));
+            string country = ZplEscape(Clean(request.CompanyCountry));
+            string orderDate = ZplEscape(request.SODate?.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture) ?? string.Empty);
+            string location = ZplEscape(Clean(request.LocationCD));
+            string orderNbr = ZplEscape(Clean(request.OrderNbr));
+
+            var zpl = new StringBuilder();
+            zpl.AppendLine("^XA");
+            zpl.AppendLine("^PW812");
+            zpl.AppendLine("^LL609");
+            zpl.AppendLine("^CI28");
+            zpl.AppendLine("^FO60,50^A0N,25,25^FDSERVA^FS");
+            zpl.AppendFormat(CultureInfo.InvariantCulture, "^FO280,35^A0N,55,55^FH^FD{0}^FS\r\n", item);
+            zpl.AppendFormat(CultureInfo.InvariantCulture, "^FO700,50^A0N,25,25^FH^FD{0}^FS\r\n", uom);
+            zpl.AppendFormat(CultureInfo.InvariantCulture, "^FO740,45^A0N,32,32^FH^FD{0}^FS\r\n", quantity);
+            zpl.AppendFormat(CultureInfo.InvariantCulture, "^FO60,130^BQ,2,7^FH^FDLA,{0}^FS\r\n", item);
+            zpl.AppendFormat(CultureInfo.InvariantCulture, "^FO280,220^A0N,28,28^FH^FD{0}^FS\r\n", company);
+            zpl.AppendFormat(CultureInfo.InvariantCulture, "^FO200,320^A0N,28,28^FB412,2,5,C^FH^FD{0}\\&^FS\r\n", description);
+            zpl.AppendFormat(CultureInfo.InvariantCulture, "^FO70,450^A0N,24,24^FH^FDCOO: {0}^FS\r\n", country);
+            zpl.AppendFormat(CultureInfo.InvariantCulture, "^FO70,500^A0N,24,24^FH^FD{0}^FS\r\n", orderDate);
+            zpl.AppendFormat(CultureInfo.InvariantCulture, "^FO350,450^A0N,28,28^FH^FD{0}^FS\r\n", location);
+            zpl.AppendFormat(CultureInfo.InvariantCulture, "^FO650,450^A0N,28,28^FH^FDSO# {0}^FS\r\n", orderNbr);
+            zpl.AppendLine("^XZ");
+            return zpl.ToString();
+        }
+
+        private static string FormatQuantity(decimal? value) =>
+            value?.ToString("0.####", CultureInfo.InvariantCulture) ?? string.Empty;
+
+        private static string Clean(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return string.Empty;
+            var result = new StringBuilder(value.Trim().Length);
+            foreach (char c in value.Trim())
+                result.Append(c == '\r' || c == '\n' || c == '\t' ? ' ' : char.IsControl(c) ? '?' : c);
+            return result.ToString();
+        }
+
+        private static string ZplEscape(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+                return string.Empty;
+            return value
+                .Replace("_", "_5F")
+                .Replace("^", "_5E")
+                .Replace("~", "_7E")
+                .Replace("\\", "_5C");
         }
 
         private static string GetErrorMessage(Exception exception)
@@ -368,6 +464,23 @@ namespace Serva.Acumatica.SoScannerLabels
         {
             SubmitDerived(ServaSOPickConstants.RetrySource, requireFailed: true);
             return adapter.Get();
+        }
+
+        public PXAction<ServaLabelHistoryFilter> DownloadZpl;
+        [PXButton]
+        [PXUIField(DisplayName = "Download ZPL", MapEnableRights = PXCacheRights.Select, MapViewRights = PXCacheRights.Select)]
+        protected virtual IEnumerable downloadZpl(PXAdapter adapter)
+        {
+            ServaLabelPrintRequest request = Requests.Current;
+            if (request == null)
+                throw new PXException("Select a print-history row.");
+            if (request.ZplFileID == null)
+                throw new PXException("No generated ZPL file is recorded for the selected print request.");
+
+            PX.SM.FileInfo file = PXGraph.CreateInstance<UploadFileMaintenance>().GetFile(request.ZplFileID.Value);
+            if (file == null)
+                throw new PXException("The generated ZPL file could not be found.");
+            throw new PXRedirectToFileException(file, true);
         }
 
         protected virtual void SubmitDerived(string source, bool requireFailed)
