@@ -48,6 +48,10 @@ def test_shipment_first_scanner_contract():
     assert "class LabelCountState" in source
     assert "class LabelQuantityState" in source
     assert "class PrinterSelectionState" in source
+    assert "Enter Y to print to the default printer" in source
+    assert 'string.Equals(value, "Y", StringComparison.OrdinalIgnoreCase)' in source
+    assert 'string.Equals(value, "YES", StringComparison.OrdinalIgnoreCase)' in source
+    assert "return service.GetDefaultPrinterID()" in source
     assert "UsrServaPendingRequestID" not in source
     assert "UsrServaInventoryID" not in source
     assert ".View.ReadOnly.Select(basis.Graph, split.ShipmentNbr, split.LineNbr)" in source

@@ -13,7 +13,7 @@ Scan Shipment number
   -> Enter label count 0-99
      -> 0: record Skipped and continue picking
      -> 1-99: enter the quantity to print on each label
-  -> Use the default/session printer, or scan another configured printer
+  -> Enter Y for the default printer, or scan another configured printer
   -> Queue the label job(s) through DeviceHub
   -> Continue with the next item in the Shipment
 ```

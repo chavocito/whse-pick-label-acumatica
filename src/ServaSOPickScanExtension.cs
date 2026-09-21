@@ -286,16 +286,23 @@ namespace Serva.Acumatica.SoScannerLabels
         {
             public const string Value = "SVPRNT";
             public override string Code => Value;
-            protected override string StatePrompt => "Tap Print Label for the default printer, or scan a printer name, DeviceHub ID, or GUID.";
+            protected override string StatePrompt => "Enter Y to print to the default printer, or scan a printer name, DeviceHub ID, or GUID.";
 
-            protected override Guid? GetByBarcode(string barcode) =>
-                PXGraph.CreateInstance<ServaLabelPrintService>().ResolvePrinterID(barcode);
+            protected override Guid? GetByBarcode(string barcode)
+            {
+                string value = barcode?.Trim();
+                var service = PXGraph.CreateInstance<ServaLabelPrintService>();
+                if (string.Equals(value, "Y", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(value, "YES", StringComparison.OrdinalIgnoreCase))
+                    return service.GetDefaultPrinterID();
+                return service.ResolvePrinterID(value);
+            }
             protected override Validation Validate(Guid? value) =>
-                value != null ? Validation.Ok : Validation.Fail("Printer not found. Scan its configured name, DeviceHub ID, or GUID.");
+                value != null ? Validation.Ok : Validation.Fail("Printer not found. Enter Y for the default printer, or scan its configured name, DeviceHub ID, or GUID.");
             protected override void Apply(Guid? value) => ContextFor(Basis).UsrServaPrinterOverrideID = value;
             protected override void ClearState() { }
             protected override void ReportMissing(string barcode) =>
-                Basis.ReportError("Printer was not found. Scan its configured name, DeviceHub ID, or GUID.");
+                Basis.ReportError("Printer was not found. Enter Y for the default printer, or scan its configured name, DeviceHub ID, or GUID.");
             protected override void ReportSuccess(Guid? value) { }
             protected override void SetNextState() =>
                 Basis.Get<ServaSOPickScanExtension>().SubmitPendingAndResume(ContextFor(Basis).UsrServaPrinterOverrideID);
