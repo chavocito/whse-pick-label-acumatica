@@ -50,6 +50,9 @@ GO
 IF COL_LENGTH(N'dbo.ServaLabelPrintRequest', N'ReprintReason') IS NULL
     ALTER TABLE dbo.ServaLabelPrintRequest ADD ReprintReason nvarchar(255) NULL;
 GO
+IF COL_LENGTH(N'dbo.ServaLabelPrintRequest', N'QuantityPerLabel') IS NULL
+    ALTER TABLE dbo.ServaLabelPrintRequest ADD QuantityPerLabel decimal(25,6) NULL;
+GO
 IF COL_LENGTH(N'dbo.ServaLabelPrintRequest', N'LastModifiedByID') IS NULL
     ALTER TABLE dbo.ServaLabelPrintRequest ADD LastModifiedByID uniqueidentifier NULL;
 GO

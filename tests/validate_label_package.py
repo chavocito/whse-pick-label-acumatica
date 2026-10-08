@@ -4,6 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SOURCES = sorted((ROOT / "src").glob("*.cs"))
 DATABASE = ROOT / "database" / "SERVA_SO_PICK_FACADE_DB_20260911_01.sql"
+DATABASE_PATCH = ROOT / "database" / "SERVA_SO_PICK_FACADE_DB_20260911_02.sql"
 ZPL_TEMPLATE = ROOT / "sv619210.zpl"
 PAGE = ROOT / "pages" / "SV" / "SV619210.aspx"
 PAGE_CODEBEHIND = ROOT / "pages" / "SV" / "SV619210.aspx.cs"
@@ -16,7 +17,7 @@ def text(path):
 
 
 def test_package_shape():
-    required = [DATABASE, ZPL_TEMPLATE, PAGE, PAGE_CODEBEHIND, MOBILE, COMPILE_CHECK]
+    required = [DATABASE, DATABASE_PATCH, ZPL_TEMPLATE, PAGE, PAGE_CODEBEHIND, MOBILE, COMPILE_CHECK]
     assert all(path.exists() for path in required), "a required package artifact is missing"
     assert len(SOURCES) == 3, f"expected three focused C# files, found {len(SOURCES)}"
     removed = [
@@ -82,7 +83,7 @@ def test_print_contract():
     assert "QuantityPerLabel = original.QuantityPerLabel ?? original.PickedQty" in source
     assert "OriginalRequestID = original.RequestID" in source
     assert "ReprintReason = reason.Trim()" in source
-    assert "NumberOfCopies = 1" in source
+    assert "[nameof(IPrintable.NumberOfCopies)] = 1" in source
     assert "for (int copy = 1; copy <= request.LabelCount" in source
     assert "BuildSalesOrderLabelZpl" in source
     assert "UploadZplFile" in source
@@ -92,7 +93,9 @@ def test_print_contract():
     assert "FileExistsAction.CreateVersion" in source
     assert "ZplFileID = zplFile.UID" in source
     assert "ZplFileName = zplFile.Name" in source
-    assert "CreatePrintJob(\n                        printSettings,\n                        (string)null" in source
+    assert "CreatePrintJobForRawFile(" in source
+    assert "PXView.Dummy.For<ServaLabelPrintRequest>(this)" in source
+    assert "delegate { return printer.PrinterID; }" in source
     assert "Serva SO Label ZPL" in source
     assert "raw ZPL sales-order label" in source
     assert "SODate = order?.OrderDate" in source
@@ -113,13 +116,17 @@ def test_print_contract():
 
 def test_database_migration():
     sql = text(DATABASE)
+    patch = text(DATABASE_PATCH)
     assert "OBJECT_ID(N'dbo.ServaLabelPrintRequest'" in sql
     assert "ServaSOPickLease" not in sql
-    for column in ("OriginalRequestID", "ReprintReason", "LastModifiedByID", "LastModifiedDateTime", "SODate", "CompanyName", "CompanyCountry", "ZplFileID", "ZplFileName"):
+    for column in ("OriginalRequestID", "ReprintReason", "QuantityPerLabel", "LastModifiedByID", "LastModifiedDateTime", "SODate", "CompanyName", "CompanyCountry", "ZplFileID", "ZplFileName"):
         assert f"COL_LENGTH(N'dbo.ServaLabelPrintRequest', N'{column}')" in sql
     assert "QuantityPerLabel decimal(25,6)" in sql
     assert "PRIMARY KEY CLUSTERED (CompanyID, RequestID)" in sql
     assert "DROP TABLE" not in sql.upper()
+    assert "COL_LENGTH(N'dbo.ServaLabelPrintRequest', N'QuantityPerLabel')" in patch
+    assert "ADD QuantityPerLabel decimal(25,6) NULL" in patch
+    assert "DROP TABLE" not in patch.upper()
 
 
 def test_web_and_mobile_contract():

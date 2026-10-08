@@ -270,17 +270,24 @@ namespace Serva.Acumatica.SoScannerLabels
                         { "FILEID", zplFile.UID.ToString() }
                     };
 
-                    var printSettings = new PrintSettings
+                    var adapter = new PXAdapter(PXView.Dummy.For<ServaLabelPrintRequest>(this))
                     {
-                        PrinterID = printer.PrinterID,
-                        NumberOfCopies = 1,
-                        PrintWithDeviceHub = true,
-                        DefinePrinterManually = true
+                        MassProcess = true,
+                        Arguments =
+                        {
+                            [nameof(IPrintable.PrintWithDeviceHub)] = true,
+                            [nameof(IPrintable.DefinePrinterManually)] = true,
+                            [nameof(IPrintable.PrinterID)] = printer.PrinterID,
+                            [nameof(IPrintable.NumberOfCopies)] = 1
+                        }
                     };
 
-                    bool accepted = PXGraph.CreateInstance<SMPrintJobMaint>().CreatePrintJob(
-                        printSettings,
-                        (string)null,
+                    bool accepted = SMPrintJobMaint.CreatePrintJobForRawFile(
+                        adapter,
+                        delegate { return printer.PrinterID; },
+                        "Serva",
+                        null,
+                        Accessinfo.BranchID,
                         parameters,
                         string.Format("Serva SO Label ZPL {0} ({1}/{2})", request.RequestID, copy, request.LabelCount),
                         CancellationToken.None).GetAwaiter().GetResult();

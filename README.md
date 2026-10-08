@@ -257,6 +257,7 @@ For the next reproduction, record the complete text after **label printing faile
 - Check **Print Jobs** (`SM206500`). No row means raw-file job creation was rejected; an existing row moves troubleshooting to DeviceHub, the Windows queue, driver, or printer.
 - Re-run **Update Printer List** in `SM206510` if the printer selector is empty.
 - Confirm the signed-in user can access the printer and the Zebra queue accepts raw ZPL.
+- DeviceHub should not log "doesn't look like a valid PDF file" for Serva ZPL labels; that means an old package is still using the report/PDF print-job path instead of the raw-file path.
 
 `Submitted` means Acumatica accepted the DeviceHub print job. It does not prove that paper physically exited the printer.
 
